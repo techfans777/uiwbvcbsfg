@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>加压刺破气球小游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            user-select: none; /* 防止双击选中文本 */
+        }
+
+        #game-container {
+            position: relative;
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        /* 分数板 */
+        .stats {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* 气球容器 */
+        #balloon-area {
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* 气球本体 */
+        #balloon {
+            width: 100px;
+            height: 120px;
+            background-color: #ff4757;
+            border-radius: 50%;
+            position: relative;
+            transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: inset -10px -10px 20px rgba(0,0,0,0.2), 5px 5px 15px rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+
+            /* 气球的光泽 */
+            #balloon::after {
+                content: '';
+                position: absolute;
+                top: 15%;
+                left: 20%;
+                width: 25%;
+                height: 15%;
+                background: rgba(255,255,255,0.4);
+                border-radius: 50%;
+                transform: rotate(45deg);
+            }
+
+            /* 气球绳子 */
+            #balloon::before {
+                content: '';
+                position: absolute;
+                bottom: -10px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 2px;
+                height: 50px;
+                background: #555;
+            }
+
+        /* 充气按钮 */
+        #pump-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background-color: #2ed573;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #218c74;
+            transition: all 0.1s;
+            outline: none;
+        }
+
+            #pump-btn:active {
+                transform: translateY(5px);
+                box-shadow: 0 0 0 #218c74;
+            }
+
+        /* 爆炸碎片样式 */
+        .particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* 震动动画 */
+        @keyframes shake {
+            0% {
+                transform: translate(1px, 1px) rotate(0deg);
+            }
+
+            10% {
+                transform: translate(-1px, -2px) rotate(-1deg);
+            }
+
+            20% {
+                transform: translate(-3px, 0px) rotate(1deg);
+            }
+
+            30% {
+                transform: translate(3px, 2px) rotate(0deg);
+            }
+
+            40% {
+                transform: translate(1px, -1px) rotate(1deg);
+            }
+
+            50% {
+                transform: translate(-1px, 2px) rotate(-1deg);
+            }
+
+            60% {
+                transform: translate(-3px, 1px) rotate(0deg);
+            }
+
+            70% {
+                transform: translate(3px, 1px) rotate(-1deg);
+            }
+
+            80% {
+                transform: translate(-1px, -1px) rotate(1deg);
+            }
+
+            90% {
+                transform: translate(1px, 2px) rotate(0deg);
+            }
+
+            100% {
+                transform: translate(1px, -2px) rotate(-1deg);
+            }
+        }
+
+        .shaking {
+            animation: shake 0.5s;
+            animation-iteration-count: 1;
+        }
+
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: #ff4757;
+            text-shadow: 2px 2px white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div class="stats">
+            成功个数: <span id="score">0</span>
+        </div>
+
+        <div id="balloon-area">
+            <div id="balloon"></div>
+            <div id="message">BOOM!</div>
+        </div>
+
+        <p style="color: #666; font-size: 14px;">点击按钮或气球充气<br>小心别吹爆了！<br>点击 "收集" 按钮安全拿分</p>
+
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button id="pump-btn">打气 (Pump)</button>
+            <button id="collect-btn" style="background-color: #ffa502; box-shadow: 0 5px 0 #cd8400;">收集 (Collect)</button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏状态
+        let currentSize = 1;
+        const baseSize = 1; // 缩放基准
+        let maxLimit = 0; // 爆炸临界点 (随机)
+        let score = 0;
+        let isPopped = false;
+
+        // DOM 元素
+        const balloon = document.getElementById('balloon');
+        const pumpBtn = document.getElementById('pump-btn');
+        const collectBtn = document.getElementById('collect-btn');
+        const scoreEl = document.getElementById('score');
+        const messageEl = document.getElementById('message');
+
+        // 初始化游戏一局
+        function initRound() {
+            currentSize = 1;
+            isPopped = false;
+            // 随机设置爆炸上限，比如 2.5倍 到 4.5倍之间
+            maxLimit = 2.5 + Math.random() * 2.0;
+
+            // 重置气球样式
+            balloon.style.transform = `scale(${currentSize})`;
+            balloon.style.opacity = '1';
+            balloon.style.visibility = 'visible';
+
+            // 随机颜色
+            const colors = ['#ff4757', '#2ed573', '#1e90ff', '#ffa502', '#a55eea'];
+            balloon.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+
+            messageEl.style.opacity = '0';
+        }
+
+        // 打气功能
+        function pump() {
+            if (isPopped) return;
+
+            // 增加大小
+            currentSize += 0.15; // 每次点击增加的幅度
+
+            // 应用缩放
+            balloon.style.transform = `scale(${currentSize})`;
+
+            // 添加震动效果（视觉反馈）
+            balloon.classList.remove('shaking');
+            void balloon.offsetWidth; // 触发重绘
+            balloon.classList.add('shaking');
+
+            // 检查是否爆炸
+            if (currentSize >= maxLimit) {
+                popBalloon();
+            }
+        }
+
+        // 收集功能（安全拿分）
+        function collect() {
+            if (isPopped) return;
+            if (currentSize === 1) return; // 没打气不能收集
+
+            score++;
+            scoreEl.innerText = score;
+            showMessage("成功! +1");
+
+            // 简单的缩小动画然后下一局
+            setTimeout(() => {
+                initRound();
+            }, 500);
+        }
+
+        // 爆炸逻辑
+        function popBalloon() {
+            isPopped = true;
+            createParticles();
+
+            balloon.style.visibility = 'hidden'; // 隐藏原气球
+            showMessage("BOOM!");
+
+            // 扣分或重置（可选，这里设定为不扣分但不得分）
+            // score = 0; scoreEl.innerText = score; // 如果你想让游戏更难，可以取消注释这行
+
+            // 1秒后重置
+            setTimeout(() => {
+                initRound();
+            }, 1000);
+        }
+
+        // 显示文字提示
+        function showMessage(text) {
+            messageEl.innerText = text;
+            messageEl.style.opacity = '1';
+        }
+
+        // 粒子爆炸特效
+        function createParticles() {
+            const rect = balloon.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const color = balloon.style.backgroundColor;
+
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('particle');
+                particle.style.backgroundColor = color;
+                particle.style.left = centerX + 'px';
+                particle.style.top = centerY + 'px';
+
+                // 随机方向
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 5 + Math.random() * 10;
+                const tx = Math.cos(angle) * velocity * 20;
+                const ty = Math.sin(angle) * velocity * 20;
+
+                document.body.appendChild(particle);
+
+                // 粒子动画
+                const animation = particle.animate([
+                    { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+                ], {
+                    duration: 600,
+                    easing: 'ease-out'
+                });
+
+                animation.onfinish = () => particle.remove();
+            }
+        }
+
+        // 事件监听
+        pumpBtn.addEventListener('click', pump);
+
+        // 点击气球本身也可以打气
+        balloon.addEventListener('click', pump);
+
+        collectBtn.addEventListener('click', collect);
+
+        // 键盘支持 (空格打气)
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                pump();
+                // 按钮按下的视觉效果
+                pumpBtn.style.transform = 'translateY(5px)';
+                pumpBtn.style.boxShadow = '0 0 0 #218c74';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                pumpBtn.style.transform = '';
+                pumpBtn.style.boxShadow = '';
+            }
+        });
+
+
+        // 启动游戏
+        initRound();
+
+    </script>
+</body>
+</html>
